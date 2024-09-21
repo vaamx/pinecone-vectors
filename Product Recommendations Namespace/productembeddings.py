@@ -48,11 +48,11 @@ def query_product_data():
         logging.error(f"Error querying Snowflake: {e}")
         return []
 
-# Step 2: Use OpenAI API for 1536-Dimensional Embeddings
+# Step 2: Use OpenAI API for 1536-Dimensional Embeddings (Updated for new API)
 def vectorize_description(description):
-    response = openai.Embedding.create(
-        model="text-embedding-ada-002",
-        input=description
+    response = openai.embeddings.create(
+        input=description,
+        model="text-embedding-ada-002"
     )
     return response['data'][0]['embedding']
 

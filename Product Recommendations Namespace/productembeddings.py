@@ -49,13 +49,18 @@ def query_product_data():
 
 # Step 2: Use OpenAI API for 1536-Dimensional Embeddings (Corrected API Usage)
 def vectorize_description(description):
-    response = openai.Embedding.create(
-        input=description,
-        model="text-embedding-ada-002"
-    )
-    # Access the embeddings properly from the 'data' field in the response
-    embedding = response['data'][0]['embedding']
-    return embedding
+    try:
+        # API call to generate embeddings
+        response = openai.Embedding.create(
+            input=[description],  # input should be a list of texts
+            model="text-embedding-ada-002"
+        )
+        # Access the embedding from the response
+        embedding = response['data'][0]['embedding']
+        return embedding
+    except Exception as e:
+        logging.error(f"Error in OpenAI API call: {e}")
+        return None
 
 # Parallelize the vectorization process to handle large datasets efficiently
 def vectorize_products_parallel(product_data):

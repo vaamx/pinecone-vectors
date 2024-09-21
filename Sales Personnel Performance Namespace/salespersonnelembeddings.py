@@ -4,6 +4,7 @@ from tqdm import tqdm
 import numpy as np
 import openai
 import pinecone
+from pinecone import Pinecone, ServerlessSpec
 import snowflake.connector
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
@@ -78,17 +79,27 @@ def vectorize_sales_data(sales_data, embedding_dimension=1536, namespace="defaul
     logging.info("Initializing Pinecone and vectorizing sales data...")
 
     # Initialize Pinecone
-    pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
+    pc = Pinecone(api_key=pinecone_api_key)
     
     index_name = "diana-sales"
-    index = pinecone.Index(index_name)
+    
+    # Check if index exists, if not, create one
+    if index_name not in pc.list_indexes().names():
+        pc.create_index(
+            name=index_name,
+            dimension=embedding_dimension,  # Ensure dimensional consistency with OpenAI embeddings
+            metric='cosine',
+            spec=ServerlessSpec(cloud='aws', region='us-west-2')
+        )
+
+    index = pc.Index(index_name)
 
     # Prepare vectorized sales data
     vectorized_sales = []
 
     def process_row(row):
         salesrep_id, salesrep_name, region_id, total_sales, total_transactions, unique_stores, avg_sale_value = row
-        # Create a 1536-dimensional vector, where first four dimensions contain sales data
+        # Create a 1536-dimensional vector, where the first four dimensions contain sales data
         vector = np.zeros(embedding_dimension)
         vector[:4] = np.array([total_sales, total_transactions, unique_stores, avg_sale_value])
 

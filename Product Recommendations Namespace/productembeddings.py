@@ -4,24 +4,26 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from pinecone import Pinecone, ServerlessSpec
+import os
 
-# Set your OpenAI API key
-openai.api_key = "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"  # Replace with your OpenAI API key
-
-# Setup logging to monitor the workflow
+# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Step 1: Securely connect and query product data from Snowflake
+# Load sensitive keys from environment variables for security
+openai.api_key = os.getenv("OPENAI_API_KEY")
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
+
+# Step 1: Query product data from Snowflake securely
 def query_product_data():
     try:
-        # Establish a connection to Snowflake
+        # Connect to Snowflake
         conn = snowflake.connector.connect(
-            user='OPSCALEAI',
-            password='Opscale2030',  # Consider using a secure vault or environment variable for the password
-            account='nvvmnod-mw08757',
-            warehouse='DIANA_DATA_LAKE',
-            database='DIANA_SALES_ES',
-            schema='SALES'
+            user=os.getenv("SNOWFLAKE_USER"),
+            password=os.getenv("SNOWFLAKE_PASSWORD"),
+            account=os.getenv("SNOWFLAKE_ACCOUNT"),
+            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+            database=os.getenv("SNOWFLAKE_DATABASE"),
+            schema=os.getenv("SNOWFLAKE_SCHEMA")
         )
 
         cur = conn.cursor()
@@ -29,15 +31,13 @@ def query_product_data():
         # SQL query to fetch product details
         query = """
         SELECT PRODUCT_ID, PRODUCT_NAME, DESCRIPTION, PRICE, PRODUCT_CATEGORY_ID
-        FROM DIANA_SALES_ES.SALES.PRODUCTS
+        FROM PRODUCTS
         """
 
         cur.execute(query)
         product_data = cur.fetchall()
 
-        # Log the number of products retrieved
         logging.info(f"Retrieved {len(product_data)} products from Snowflake.")
-
         cur.close()
         conn.close()
 
@@ -47,22 +47,20 @@ def query_product_data():
         logging.error(f"Error querying Snowflake: {e}")
         return []
 
-# Step 2: Use OpenAI API for 1536-Dimensional Embeddings (Corrected API Usage)
+# Step 2: Vectorize product descriptions using OpenAI API
 def vectorize_description(description):
     try:
-        # API call to generate embeddings
         response = openai.Embedding.create(
-            input=[description],  # input should be a list of texts
+            input=[description],  # Input must be a list of texts
             model="text-embedding-ada-002"
         )
-        # Access the embedding from the response
         embedding = response['data'][0]['embedding']
         return embedding
     except Exception as e:
         logging.error(f"Error in OpenAI API call: {e}")
         return None
 
-# Parallelize the vectorization process to handle large datasets efficiently
+# Step 3: Vectorize product data in parallel
 def vectorize_products_parallel(product_data):
     vectorized_products = []
 
@@ -70,12 +68,12 @@ def vectorize_products_parallel(product_data):
         product_id, product_name, description, price, product_category_id = row
         vector = vectorize_description(description)
 
-        # Add metadata for better filtering and convert Decimal to float
+        # Create metadata and handle Decimal to float conversion
         metadata = {
             'product_name': product_name,
-            'price': float(price),  # Convert Decimal to float
+            'price': float(price),
             'product_category_id': product_category_id,
-            'description_length': len(description),  # Useful for future search optimizations
+            'description_length': len(description)
         }
 
         return {'id': str(product_id), 'values': vector, 'metadata': metadata}
@@ -83,8 +81,6 @@ def vectorize_products_parallel(product_data):
     # Use ThreadPoolExecutor to parallelize vectorization
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_row, row) for row in product_data]
-        
-        # Add a progress bar for vectorization
         for future in tqdm(as_completed(futures), total=len(futures), desc="Vectorizing Products", unit="product"):
             try:
                 vectorized_products.append(future.result())
@@ -94,50 +90,39 @@ def vectorize_products_parallel(product_data):
     logging.info(f"Vectorized {len(vectorized_products)} products.")
     return vectorized_products
 
-# Step 3: Efficiently Upload to Pinecone (Batch Processing with Progress Bars)
+# Step 4: Upload vectorized data to Pinecone in batches
 def upload_to_pinecone(vectorized_products, namespace="default_namespace"):
     try:
-        # Directly pass your API key for now
-        pc = Pinecone(api_key="edbfd83a-056b-4ffd-91d9-1d83a6a9c291")  # Replace with your actual key
+        # Initialize Pinecone
+        pc = Pinecone(api_key=pinecone_api_key)
 
-        # Check if index exists and connect to it
         index_name = "diana-sales"
         if index_name not in pc.list_indexes().names():
             pc.create_index(
                 name=index_name,
-                dimension=1536,  # Ensure dimensional consistency with OpenAI embeddings
-                metric='cosine',  # You can adjust this based on your needs
+                dimension=1536,
+                metric='cosine',
                 spec=ServerlessSpec(cloud='aws', region='us-west-2')
             )
 
         index = pc.Index(index_name)
 
-        # Upload data in batches to Pinecone within a specific namespace
+        # Upload in batches
         batch_size = 100
-        num_batches = len(vectorized_products) // batch_size + 1
-        
-        # Add a progress bar for batch uploads
         for i in tqdm(range(0, len(vectorized_products), batch_size), desc="Uploading to Pinecone", unit="batch"):
             batch = vectorized_products[i:i + batch_size]
-            # Specify the namespace for this batch of uploads
             index.upsert(vectors=batch, namespace=namespace)
-            logging.info(f"Uploaded batch {i // batch_size + 1} of {num_batches} to Pinecone.")
+            logging.info(f"Uploaded batch {i // batch_size + 1} of {len(vectorized_products) // batch_size + 1}.")
 
     except Exception as e:
         logging.error(f"Error uploading to Pinecone: {e}")
 
-# Main Function: Execute the Workflow
+# Main execution flow
 def main(namespace="default_namespace"):
-    # Step 1: Query product data from Snowflake
     product_data = query_product_data()
-
     if product_data:
-        # Step 2: Vectorize product descriptions
         vectorized_products = vectorize_products_parallel(product_data)
-
-        # Step 3: Upload vectorized data to Pinecone with the specified namespace
         upload_to_pinecone(vectorized_products, namespace=namespace)
 
 if __name__ == "__main__":
-    # You can set different namespaces for different datasets or projects
     main(namespace="product_descriptions_2024")

@@ -5,6 +5,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from pinecone import Pinecone, ServerlessSpec
 import os
+from dotenv import load_dotenv  # Import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()  # Add this line to load the .env file
 
 # Set up logging to capture detailed information and errors
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

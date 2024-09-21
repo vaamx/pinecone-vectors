@@ -1,29 +1,63 @@
+import os
 import logging
 import numpy as np
 import pinecone
 import snowflake.connector
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dotenv import load_dotenv
+import openai
 
-# Step 1: Set up logging
+# Step 1: Load environment variables
+load_dotenv()
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+snowflake_user = os.getenv("SNOWFLAKE_USER")
+snowflake_password = os.getenv("SNOWFLAKE_PASSWORD")
+snowflake_account = os.getenv("SNOWFLAKE_ACCOUNT")
+snowflake_warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
+snowflake_database = os.getenv("SNOWFLAKE_DATABASE")
+snowflake_schema = os.getenv("SNOWFLAKE_SCHEMA")
+
+# Step 2: Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
-# Step 2: Fetch data from Snowflake
+# Step 3: Initialize Pinecone
+def initialize_pinecone(index_name="diana-sales", embedding_dimension=1536):
+    try:
+        logger.info("Initializing Pinecone...")
+        from pinecone import Pinecone, ServerlessSpec
+
+        pc = Pinecone(api_key=pinecone_api_key)
+        if index_name not in pc.list_indexes().names():
+            logger.info(f"Creating Pinecone index '{index_name}'...")
+            pc.create_index(
+                name=index_name,
+                dimension=embedding_dimension,
+                metric='cosine',
+                spec=ServerlessSpec(cloud='aws', region='us-west-2')
+            )
+        logger.info(f"Connecting to Pinecone index '{index_name}'...")
+        return pc.Index(index_name)
+    except Exception as e:
+        logger.error(f"Error initializing Pinecone: {e}")
+        raise
+
+# Step 4: Fetch data from Snowflake
 def fetch_data_from_snowflake():
     try:
         logger.info("Connecting to Snowflake...")
-        # Snowflake connection details
         conn = snowflake.connector.connect(
-            user='OPSCALEAI',
-            password='Opscale2030',
-            account='nvvmnod-mw08757',
-            warehouse='DIANA_DATA_LAKE',
-            database='DIANA_SALES_ES',
-            schema='SALES'
+            user=snowflake_user,
+            password=snowflake_password,
+            account=snowflake_account,
+            warehouse=snowflake_warehouse,
+            database=snowflake_database,
+            schema=snowflake_schema
         )
         cur = conn.cursor()
 
-        # SQL query to aggregate store transaction data and join with store locations
         query = """
         SELECT st.STORE_ID, st.STORE_NAME, 
                COUNT(t.TRANSACTION_ID) AS total_transactions, 
@@ -34,11 +68,10 @@ def fetch_data_from_snowflake():
         JOIN DIANA_SALES_ES.STOREFRONTS.STORES st ON t.STORE_ID = st.STORE_ID
         GROUP BY st.STORE_ID, st.STORE_NAME, st.ADDRESS, st.REGION_ID
         """
-
+        
         logger.info("Executing query on Snowflake...")
         cur.execute(query)
         store_logistics_data = cur.fetchall()
-
         logger.info(f"Fetched {len(store_logistics_data)} records from Snowflake.")
         return store_logistics_data
     except Exception as e:
@@ -48,74 +81,73 @@ def fetch_data_from_snowflake():
         cur.close()
         conn.close()
 
-# Step 3: Initialize Pinecone with existing index
-def initialize_pinecone():
-    try:
-        logger.info("Initializing Pinecone...")
-        pinecone.init(api_key="edbfd83a-056b-4ffd-91d9-1d83a6a9c291")
-        
-        # Connect to the existing index (1536 dimensions)
-        index_name = "diana-sales"
-        logger.info(f"Connecting to Pinecone index '{index_name}'...")
-        return pinecone.Index(index_name)
-    except Exception as e:
-        logger.error(f"Error initializing Pinecone: {e}")
-        raise
+# Step 5: Vectorization function for each row
+def process_row(row, embedding_dimension=1536):
+    store_id, store_name, total_transactions, avg_transaction_value, total_quantity, address, region_id = row
+    
+    # Create the vector, leaving unused elements as zeros for now
+    vector = np.zeros(embedding_dimension)
+    vector[:4] = np.array([total_transactions, avg_transaction_value, total_quantity, region_id])
+    
+    # Add metadata
+    metadata = {
+        'store_name': store_name,
+        'address': address,
+        'region_id': region_id
+    }
+    
+    return {
+        'id': str(store_id),
+        'values': vector.tolist(),
+        'metadata': metadata
+    }
 
-# Step 4: Vectorization with Logistics Data (Assuming 1536-dimensional vectors)
-def vectorize_logistics_data(store_logistics_data):
-    logger.info("Vectorizing logistics data...")
+# Step 6: Vectorize all logistics data using concurrency
+def vectorize_logistics_data(store_logistics_data, embedding_dimension=1536):
     vectorized_logistics = []
-
-    # Example: Let's assume we're embedding some additional metadata
-    for row in tqdm(store_logistics_data, desc="Vectorizing data"):
-        store_id, store_name, total_transactions, avg_transaction_value, total_quantity, address, region_id = row
+    logger.info("Vectorizing logistics data with concurrency...")
+    
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_row, row, embedding_dimension) for row in store_logistics_data]
         
-        # Here we assume that a 1536-dimensional vector comes from some model (like OpenAI embeddings)
-        vector = np.random.rand(1536)  # This would be replaced by actual embeddings from a model
-
-        # Add metadata for store location and additional data
-        vectorized_logistics.append({
-            'id': str(store_id),
-            'values': vector.tolist(),
-            'metadata': {
-                'store_name': store_name,
-                'address': address,
-                'region_id': region_id
-            }
-        })
-
-    logger.info("Finished vectorizing logistics data.")
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Vectorizing Sales Data", unit="record"):
+            try:
+                result = future.result()
+                if result:
+                    vectorized_logistics.append(result)
+            except Exception as e:
+                logger.error(f"Error in vectorization: {e}")
+    
+    logger.info(f"Finished vectorizing {len(vectorized_logistics)} records.")
     return vectorized_logistics
 
-# Step 5: Batch Upload to Pinecone with Namespace Support
+# Step 7: Batch upload to Pinecone with namespace handling
 def batch_upload_to_pinecone(index, vectorized_logistics, namespace="logistics", batch_size=100):
-    logger.info(f"Uploading vectors to Pinecone in namespace '{namespace}' in batches...")
+    logger.info(f"Uploading vectors to Pinecone in namespace '{namespace}'...")
     
-    # Progress bar for batch upload
-    for i in tqdm(range(0, len(vectorized_logistics), batch_size), desc="Uploading to Pinecone"):
+    for i in tqdm(range(0, len(vectorized_logistics), batch_size), desc="Uploading to Pinecone", unit="batch"):
         batch = vectorized_logistics[i:i + batch_size]
         try:
             index.upsert(vectors=batch, namespace=namespace)
         except Exception as e:
-            logger.error(f"Error uploading batch {i // batch_size + 1}: {e}")
+            logger.error(f"Error during Pinecone upsert: {e}")
             raise
-
+    
     logger.info("Successfully uploaded all vectors to Pinecone.")
 
-# Main process
+# Step 8: Main process
 def main():
     try:
-        # Step 1: Fetch data from Snowflake
+        # Fetch data from Snowflake
         store_logistics_data = fetch_data_from_snowflake()
 
-        # Step 2: Initialize Pinecone and connect to the index
+        # Initialize Pinecone and connect to the index
         pinecone_index = initialize_pinecone()
 
-        # Step 3: Vectorize and prepare data for Pinecone (1536-dimensional)
+        # Vectorize the logistics data
         vectorized_logistics = vectorize_logistics_data(store_logistics_data)
 
-        # Step 4: Batch upload the data to Pinecone, using a namespace (e.g., "logistics")
+        # Batch upload the vectorized data to Pinecone using a namespace
         batch_upload_to_pinecone(pinecone_index, vectorized_logistics, namespace="logistics")
 
     except Exception as e:

@@ -6,16 +6,46 @@ from tqdm import tqdm
 from pinecone import Pinecone, ServerlessSpec
 import os
 
-# Set up logging
+# Set up logging to capture detailed information and errors
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load sensitive keys from environment variables for security
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
 pinecone_api_key = os.getenv("PINECONE_API_KEY")
+
+# Check if the required environment variables are set
+def validate_env_vars():
+    missing_vars = []
+    env_vars = {
+        'OPENAI_API_KEY': openai_api_key,
+        'PINECONE_API_KEY': pinecone_api_key,
+        'SNOWFLAKE_USER': os.getenv("SNOWFLAKE_USER"),
+        'SNOWFLAKE_PASSWORD': os.getenv("SNOWFLAKE_PASSWORD"),
+        'SNOWFLAKE_ACCOUNT': os.getenv("SNOWFLAKE_ACCOUNT"),
+        'SNOWFLAKE_WAREHOUSE': os.getenv("SNOWFLAKE_WAREHOUSE"),
+        'SNOWFLAKE_DATABASE': os.getenv("SNOWFLAKE_DATABASE"),
+        'SNOWFLAKE_SCHEMA': os.getenv("SNOWFLAKE_SCHEMA")
+    }
+
+    for var, value in env_vars.items():
+        if value is None:
+            missing_vars.append(var)
+
+    if missing_vars:
+        logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        return False
+
+    return True
 
 # Step 1: Query product data from Snowflake securely
 def query_product_data():
+    if not validate_env_vars():
+        return []
+
     try:
+        # Log connection parameters for debug purposes (avoid logging sensitive information)
+        logging.info(f"Connecting to Snowflake: {os.getenv('SNOWFLAKE_USER')}@{os.getenv('SNOWFLAKE_ACCOUNT')}")
+
         # Connect to Snowflake
         conn = snowflake.connector.connect(
             user=os.getenv("SNOWFLAKE_USER"),
@@ -38,14 +68,25 @@ def query_product_data():
         product_data = cur.fetchall()
 
         logging.info(f"Retrieved {len(product_data)} products from Snowflake.")
+        
         cur.close()
         conn.close()
 
         return product_data
 
+    except snowflake.connector.errors.DatabaseError as db_err:
+        logging.error(f"Database error querying Snowflake: {db_err}")
+        return []
     except Exception as e:
         logging.error(f"Error querying Snowflake: {e}")
         return []
+
+if __name__ == "__main__":
+    product_data = query_product_data()
+    if product_data:
+        logging.info(f"Product data: {product_data[:5]}")  # Show a preview of the first 5 entries
+    else:
+        logging.error("No product data retrieved.")
 
 # Step 2: Vectorize product descriptions using OpenAI API
 def vectorize_description(description):

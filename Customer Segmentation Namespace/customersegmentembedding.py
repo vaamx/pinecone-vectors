@@ -59,17 +59,17 @@ def fetch_sales_data():
         cur = conn.cursor()
         query = """
         SELECT st.STORE_ID, st.STORE_NAME,
-               SUM(t.TOTAL_VALUE) AS total_sales,
-               COUNT(t.TRANSACTION_ID) AS total_transactions,
-               AVG(t.TOTAL_VALUE) AS avg_transaction_value,
-               COUNT(DISTINCT t.PURCHASE_DATE) AS purchase_frequency,
-               pd.POPULATION_DENSITY, pd.TOTAL_POPULATION, pd.URBAN_POPULATION, pd.AREA_SQ_KM,
-               r.DEPARTMENT, r.MUNICIPALITY
+            SUM(t.TOTAL_VALUE) AS total_sales,
+            COUNT(t.TRANSACTION_ID) AS total_transactions,
+            AVG(t.TOTAL_VALUE) AS avg_transaction_value,
+            COUNT(DISTINCT t.PURCHASE_DATE) AS purchase_frequency,
+            pd.POPULATION_DENSITY, pd.TOTAL_POPULATION, pd.AREA_SQ_KM, -- Removed pd.URBAN_POPULATION
+            r.DEPARTMENT, r.MUNICIPALITY
         FROM DIANA_SALES_ES.SALES.TRANSACTIONS t
         JOIN DIANA_SALES_ES.STOREFRONTS.STORES st ON t.STORE_ID = st.STORE_ID
         JOIN DIANA_SALES_ES.STOREFRONTS.POPULATIONDENSITY pd ON st.REGION_ID = pd.DENSITY_ID
         JOIN DIANA_SALES_ES.STOREFRONTS.REGION r ON st.REGION_ID = r.REGION_ID
-        GROUP BY st.STORE_ID, st.STORE_NAME, pd.POPULATION_DENSITY, pd.TOTAL_POPULATION, pd.URBAN_POPULATION, pd.AREA_SQ_KM, r.DEPARTMENT, r.MUNICIPALITY
+        GROUP BY st.STORE_ID, st.STORE_NAME, pd.POPULATION_DENSITY, pd.TOTAL_POPULATION, pd.AREA_SQ_KM, r.DEPARTMENT, r.MUNICIPALITY
         """
         cur.execute(query)
         store_data = cur.fetchall()

@@ -87,7 +87,7 @@ def fetch_sales_data():
 def process_row(row):
     try:
         (store_id, store_name, total_sales, total_transactions, avg_transaction_value,
-         purchase_frequency, pop_density, total_population, urban_population, area_sq_km,
+         purchase_frequency, pop_density, total_population, area_sq_km,
          department, municipality) = row
 
         # Placeholder for creating a 1536-dimensional vector, using first 7 slots for our custom features

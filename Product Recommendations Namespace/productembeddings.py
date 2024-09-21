@@ -89,7 +89,7 @@ def vectorize_products_parallel(product_data):
 def upload_to_pinecone(vectorized_products, namespace="default_namespace"):
     try:
         # Instantiate the Pinecone object using the new API structure
-        pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
+        pc = Pinecone(api_key=os.environ.get("edbfd83a-056b-4ffd-91d9-1d83a6a9c291"))
 
         # Check if index exists and connect to it
         index_name = "diana-sales"

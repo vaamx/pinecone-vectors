@@ -1,6 +1,5 @@
 import snowflake.connector
 import openai
-import numpy as np
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
@@ -48,13 +47,15 @@ def query_product_data():
         logging.error(f"Error querying Snowflake: {e}")
         return []
 
-# Step 2: Use OpenAI API for 1536-Dimensional Embeddings (Updated for new API)
+# Step 2: Use OpenAI API for 1536-Dimensional Embeddings (Corrected API Usage)
 def vectorize_description(description):
-    response = openai.embeddings.create(
+    response = openai.Embedding.create(
         input=description,
         model="text-embedding-ada-002"
     )
-    return response['data'][0]['embedding']
+    # Access the embeddings properly from the 'data' field in the response
+    embedding = response['data'][0]['embedding']
+    return embedding
 
 # Parallelize the vectorization process to handle large datasets efficiently
 def vectorize_products_parallel(product_data):

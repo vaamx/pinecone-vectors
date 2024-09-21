@@ -1,10 +1,13 @@
 import snowflake.connector
-from sentence_transformers import SentenceTransformer
+import openai
 import numpy as np
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from pinecone import Pinecone, ServerlessSpec
+
+# Set your OpenAI API key
+openai.api_key = "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"  # Replace with your OpenAI API key
 
 # Setup logging to monitor the workflow
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -45,12 +48,13 @@ def query_product_data():
         logging.error(f"Error querying Snowflake: {e}")
         return []
 
-# Step 2: Optimize Vectorization (Parallel Processing with Pretrained Embedding Model)
-# Load a pretrained model for embeddings (e.g., 'all-MiniLM-L6-v2') - ensure dimensional consistency
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
+# Step 2: Use OpenAI API for 1536-Dimensional Embeddings
 def vectorize_description(description):
-    return model.encode(description).tolist()
+    response = openai.Embedding.create(
+        model="text-embedding-ada-002",
+        input=description
+    )
+    return response['data'][0]['embedding']
 
 # Parallelize the vectorization process to handle large datasets efficiently
 def vectorize_products_parallel(product_data):
@@ -95,7 +99,7 @@ def upload_to_pinecone(vectorized_products, namespace="default_namespace"):
         if index_name not in pc.list_indexes().names():
             pc.create_index(
                 name=index_name,
-                dimension=1536,  # Ensure dimensional consistency
+                dimension=1536,  # Ensure dimensional consistency with OpenAI embeddings
                 metric='cosine',  # You can adjust this based on your needs
                 spec=ServerlessSpec(cloud='aws', region='us-west-2')
             )

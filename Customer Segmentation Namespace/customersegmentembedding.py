@@ -53,28 +53,29 @@ finally:
     conn.close()
     logging.info("Snowflake connection closed")
 
-# Step 2: Vectorization with Additional Features
+# Step 2: Vectorization with Additional Features (Aligned with 1536-dimensional embedding)
 logging.info("Step 2: Vectorizing Data")
 
 # Initialize Pinecone
-pinecone.init(api_key="your-pinecone-api-key")
+pinecone.init(api_key="edbfd83a-056b-4ffd-91d9-1d83a6a9c291")
 
-# Create or connect to Pinecone index
-index_name = "customer-segmentation"
-if index_name not in pinecone.list_indexes():
-    pinecone.create_index(index_name, dimension=7)  # Adjust dimension based on the number of features
+# Connect to the existing Pinecone index
+index_name = "diana-sales"
 index = pinecone.Index(index_name)
 logging.info(f"Connected to Pinecone index: {index_name}")
 
-# Vectorize and prepare data for Pinecone
+# Vectorize and prepare data for Pinecone (in a specific namespace)
+namespace = "store-segmentation"  # Define your namespace
+
 vectorized_stores = []
 for row in tqdm(store_data, desc="Vectorizing stores"):
     (store_id, store_name, total_sales, total_transactions, avg_transaction_value,
      purchase_frequency, pop_density, total_population, urban_population, area_sq_km,
      department, municipality) = row
 
-    # Create a vector with the features
-    vector = np.array([
+    # Placeholder: Extend or update the feature vector as needed to align with the 1536 dimensions
+    vector = np.zeros(1536)  # OpenAI Embedding Model: Ensure consistency with 1536 dimensions
+    vector[:7] = [
         total_sales,
         total_transactions,
         avg_transaction_value,
@@ -82,7 +83,7 @@ for row in tqdm(store_data, desc="Vectorizing stores"):
         pop_density,
         total_population,
         urban_population
-    ])
+    ]
 
     # Add metadata for the store
     vectorized_stores.append({
@@ -98,7 +99,7 @@ for row in tqdm(store_data, desc="Vectorizing stores"):
 
 logging.info(f"Vectorized data for {len(vectorized_stores)} stores")
 
-# Step 3: Batch Upload to Pinecone with Enhanced Vectors
+# Step 3: Batch Upload to Pinecone with Enhanced Vectors and Namespace
 logging.info("Step 3: Batch Upload to Pinecone")
 
 # Define batch size for uploading to Pinecone
@@ -106,8 +107,8 @@ batch_size = 100
 for i in tqdm(range(0, len(vectorized_stores), batch_size), desc="Uploading batches to Pinecone"):
     batch = vectorized_stores[i:i + batch_size]
     try:
-        index.upsert(vectors=batch)
-        logging.info(f"Uploaded batch {i // batch_size + 1}")
+        index.upsert(vectors=batch, namespace=namespace)
+        logging.info(f"Uploaded batch {i // batch_size + 1} to namespace '{namespace}'")
     except Exception as e:
         logging.error(f"Error uploading batch {i // batch_size + 1} to Pinecone: {e}")
 

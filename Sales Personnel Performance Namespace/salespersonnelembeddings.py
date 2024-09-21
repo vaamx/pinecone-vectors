@@ -50,27 +50,25 @@ def fetch_sales_data():
         return []
 
 # Step 2: Enhanced Vectorization
-def vectorize_sales_data(sales_data):
+def vectorize_sales_data(sales_data, embedding_dimension=1536, namespace="default"):
     logging.info("Initializing Pinecone and vectorizing sales data...")
 
     # Initialize Pinecone
-    pinecone.init(api_key=os.getenv("PINECONE_API_KEY", "your-pinecone-api-key"))
+    pinecone.init(api_key=os.getenv("PINECONE_API_KEY", "edbfd83a-056b-4ffd-91d9-1d83a6a9c291"))
     
-    index_name = "sales-personnel-performance"
-    dimension = 4  # Adjust according to the number of features
+    index_name = "diana-sales"
     
-    # Create or connect to Pinecone index
-    if index_name not in pinecone.list_indexes():
-        pinecone.create_index(index_name, dimension=dimension)
-        logging.info(f"Created Pinecone index: {index_name}")
-
+    # Connect to the existing Pinecone index
     index = pinecone.Index(index_name)
 
     # Prepare vectorized sales data
     vectorized_sales = []
     for row in tqdm(sales_data, desc="Vectorizing sales data", unit="record"):
         salesrep_id, salesrep_name, region_id, total_sales, total_transactions, unique_stores, avg_sale_value = row
-        vector = np.array([total_sales, total_transactions, unique_stores, avg_sale_value])
+        # Assuming embedding_dimension is 1536, which matches your current OpenAI model's output
+        # Create a dummy vector of the same dimension (1536)
+        vector = np.zeros(embedding_dimension)
+        vector[:4] = np.array([total_sales, total_transactions, unique_stores, avg_sale_value])
         
         # Prepare the vector object
         vectorized_sales.append({
@@ -82,16 +80,17 @@ def vectorize_sales_data(sales_data):
             }
         })
 
-    return index, vectorized_sales
+    return index, vectorized_sales, namespace
 
 # Step 3: Batch Upload to Pinecone with Progress Bar and Error Handling
-def batch_upload_to_pinecone(index, vectorized_sales, batch_size=100):
+def batch_upload_to_pinecone(index, vectorized_sales, namespace, batch_size=100):
     logging.info(f"Starting batch upload to Pinecone with batch size of {batch_size}...")
 
     try:
         for i in tqdm(range(0, len(vectorized_sales), batch_size), desc="Uploading to Pinecone", unit="batch"):
             batch = vectorized_sales[i:i + batch_size]
-            index.upsert(vectors=batch)
+            # Upsert into Pinecone with the specified namespace
+            index.upsert(vectors=batch, namespace=namespace)
         
         logging.info("Data successfully uploaded to Pinecone.")
     except Exception as e:
@@ -104,9 +103,9 @@ if __name__ == "__main__":
     # Check if any data was fetched
     if sales_data:
         # Vectorize the sales data and initialize the Pinecone index
-        index, vectorized_sales = vectorize_sales_data(sales_data)
+        index, vectorized_sales, namespace = vectorize_sales_data(sales_data, embedding_dimension=1536, namespace="salespersonnel-data")
 
         # Upload vectorized data to Pinecone in batches
-        batch_upload_to_pinecone(index, vectorized_sales, batch_size=100)
+        batch_upload_to_pinecone(index, vectorized_sales, namespace, batch_size=100)
     else:
         logging.warning("No sales data fetched. Exiting...")

@@ -99,7 +99,7 @@ def process_row(row):
             purchase_frequency,
             pop_density,
             total_population,
-            urban_population
+            area_sq_km
         ])
 
         metadata = {

@@ -106,7 +106,7 @@ def process_row(row):
             'store_name': store_name,
             'department': department,
             'municipality': municipality,
-            'area_sq_km': area_sq_km
+            'area_sq_km': float(area_sq_km)
         }
 
         return {'id': str(store_id), 'values': vector.tolist(), 'metadata': metadata}

@@ -4,7 +4,6 @@ import numpy as np
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
-import os
 from pinecone import Pinecone, ServerlessSpec
 
 # Setup logging to monitor the workflow
@@ -61,10 +60,10 @@ def vectorize_products_parallel(product_data):
         product_id, product_name, description, price, product_category_id = row
         vector = vectorize_description(description)
 
-        # Add metadata for better filtering
+        # Add metadata for better filtering and convert Decimal to float
         metadata = {
             'product_name': product_name,
-            'price': price,
+            'price': float(price),  # Convert Decimal to float
             'product_category_id': product_category_id,
             'description_length': len(description),  # Useful for future search optimizations
         }
@@ -88,8 +87,8 @@ def vectorize_products_parallel(product_data):
 # Step 3: Efficiently Upload to Pinecone (Batch Processing with Progress Bars)
 def upload_to_pinecone(vectorized_products, namespace="default_namespace"):
     try:
-        # Instantiate the Pinecone object using the new API structure
-        pc = Pinecone(api_key="edbfd83a-056b-4ffd-91d9-1d83a6a9c291")
+        # Directly pass your API key for now
+        pc = Pinecone(api_key="edbfd83a-056b-4ffd-91d9-1d83a6a9c291")  # Replace with your actual key
 
         # Check if index exists and connect to it
         index_name = "diana-sales"

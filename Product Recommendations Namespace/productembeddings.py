@@ -1,10 +1,11 @@
 import snowflake.connector
 from sentence_transformers import SentenceTransformer
 import numpy as np
-import pinecone
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
+import os
+from pinecone import Pinecone, ServerlessSpec
 
 # Setup logging to monitor the workflow
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -84,15 +85,23 @@ def vectorize_products_parallel(product_data):
     logging.info(f"Vectorized {len(vectorized_products)} products.")
     return vectorized_products
 
-
 # Step 3: Efficiently Upload to Pinecone (Batch Processing with Progress Bars)
 def upload_to_pinecone(vectorized_products, namespace="default_namespace"):
     try:
-        # Initialize Pinecone
-        pinecone.init(api_key="edbfd83a-056b-4ffd-91d9-1d83a6a9c291")
+        # Instantiate the Pinecone object using the new API structure
+        pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 
-        # Connect to the existing index 'diana-sales' with a dimension of 1536
-        index = pinecone.Index("diana-sales")
+        # Check if index exists and connect to it
+        index_name = "diana-sales"
+        if index_name not in pc.list_indexes().names():
+            pc.create_index(
+                name=index_name,
+                dimension=1536,  # Ensure dimensional consistency
+                metric='cosine',  # You can adjust this based on your needs
+                spec=ServerlessSpec(cloud='aws', region='us-west-2')
+            )
+
+        index = pc.Index(index_name)
 
         # Upload data in batches to Pinecone within a specific namespace
         batch_size = 100

@@ -93,7 +93,6 @@ def fetch_segment_data():
     finally:
         conn.close()
 
-# Process each row of segment data, generating vectors
 def process_segment_row(row):
     try:
         # Unpack the row values
@@ -109,6 +108,11 @@ def process_segment_row(row):
         # Generate text embedding for example purposes (replace with your embedding model)
         text_to_embed = f"{segment_name} {subsegment_name}"
         embedding = generate_embeddings(text_to_embed)  # Use your embedding model here
+
+        # Check the available space in the vector for embedding
+        available_slots = 1536 - len(numerical_values)
+        if len(embedding) > available_slots:
+            embedding = embedding[:available_slots]  # Truncate the embedding if it's too large
 
         # Ensure the vector has real data
         vector = np.zeros(1536)  # Assuming a 1536-dimensional vector

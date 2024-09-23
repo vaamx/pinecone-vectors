@@ -57,12 +57,11 @@ def generate_embeddings(text):
 
 # Function to safely convert decimals to floats
 def safe_convert(x):
-    if x is None:
-        return 0.0
     try:
-        return float(x)
-    except ValueError:
-        return 0.0  # or log this issue, or handle it in another appropriate way
+        return float(x) if x is not None else 0.0
+    except (ValueError, TypeError):
+        logging.error(f"Failed to convert value: {x} to float.")
+        return 0.0
 
 # Fetch Segment Data from Snowflake
 def fetch_segment_data():
@@ -97,31 +96,28 @@ def fetch_segment_data():
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
     try:
-        # Ensure the row contains all expected columns
-        if len(row) < 12:  # Adjust the number according to actual number of columns you expect
-            raise ValueError("Row data incomplete: " + str(row))
-        
-        # Unpack row data with explicit naming for clarity
-        criteria_id, subsegment_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, subsegment_name, segment_name = row
+        if len(row) != 15:
+            raise ValueError(f"Incorrect number of values to unpack from row: {row}")
 
-        # Convert any decimal or None values safely to float
-        vector_values = [safe_convert(vac_min), safe_convert(vac_max), safe_convert(fc_min), safe_convert(fc_max),
-                         safe_convert(ac_min), safe_convert(ac_max), safe_convert(vmc_min), safe_convert(vmc_max), safe_convert(ruc_max)]
+        (segment_id, segment_name, subsegment_id, subsegment_name, criteria_id, 
+         vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, 
+         il_description) = row
 
-        # Initialize a vector with zeros
+        numerical_values = [vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max]
+        vector_values = [safe_convert(value) for value in numerical_values]
+
         vector = np.zeros(embedding_dimension)
-        
-        # Populate the vector with actual data (ensure the size matches the available slots in the vector)
         vector[:len(vector_values)] = vector_values
-        
-        # Metadata for easier querying and understanding of data context
-        metadata = {
-            'subsegment_name': subsegment_name,
-            'segment_name': segment_name,
-            'criteria_id': criteria_id  # Adding criteria_id to metadata for better traceability
-        }
 
+        metadata = {
+            'segment_id': segment_id, 'segment_name': segment_name,
+            'subsegment_id': subsegment_id, 'subsegment_name': subsegment_name,
+            'il_description': il_description
+        }
         return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
+    except Exception as e:
+        logging.error(f"Error processing row {row}: {e}")
+        return None
 
     except Exception as e:
         logging.error(f"Error processing segment row: {e}, Row: {row}")

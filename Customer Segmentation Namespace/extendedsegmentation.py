@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from dotenv import load_dotenv
 import openai
+import math
 
 # Load environment variables from .env file
 load_dotenv()
@@ -57,11 +58,12 @@ def generate_embeddings(text):
 
 # Function to safely convert decimals to floats
 def safe_convert(x):
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return 0.0  # or some default value
     try:
-        return float(x) if x is not None else None
+        return float(x)
     except (ValueError, TypeError):
-        return x  # Keep the original string if it's not a number
-
+        return 0.0  # Default value in case of conversion error
 
 # Fetch Segment Data from Snowflake
 def fetch_segment_data():
@@ -124,17 +126,16 @@ def process_segment_row(row):
             'segment_name': segment_name,
             'subsegment_name': subsegment_name,
             'criteria_id': criteria_id,
-            'vac_min': float(vac_min) if vac_min is not None else None,
-            'vac_max': float(vac_max) if vac_max is not None else None,
-            'fc_min': int(fc_min) if fc_min is not None else None,
-            'fc_max': int(fc_max) if fc_max is not None else None,
-            'ac_min': int(ac_min) if ac_min is not None else None,
-            'ac_max': int(ac_max) if ac_max is not None else None,
-            'vmc_min': float(vmc_min) if vmc_min is not None else None,
-            'vmc_max': float(vmc_max) if vmc_max is not None else None,
-            'ruc_max': int(ruc_max) if ruc_max is not None else None,
+            'vac_min': safe_convert(vac_min),
+            'vac_max': safe_convert(vac_max),
+            'fc_min': safe_convert(fc_min),
+            'fc_max': safe_convert(fc_max),
+            'ac_min': safe_convert(ac_min),
+            'ac_max': safe_convert(ac_max),
+            'vmc_min': safe_convert(vmc_min),
+            'vmc_max': safe_convert(vmc_max),
+            'ruc_max': safe_convert(ruc_max),
             'il_description': il_description
-            # Add other metadata fields as necessary
         }
 
         return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
@@ -142,6 +143,7 @@ def process_segment_row(row):
     except Exception as e:
         logging.error(f"Error processing row {row}: {e}")
         return None
+
 
 
 # Vectorize the Segment Data using ThreadPoolExecutor for concurrency

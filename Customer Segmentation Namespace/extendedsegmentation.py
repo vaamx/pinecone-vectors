@@ -58,10 +58,10 @@ def generate_embeddings(text):
 # Function to safely convert decimals to floats
 def safe_convert(x):
     try:
-        return float(x) if x is not None else 0.0
+        return float(x) if x is not None else None
     except (ValueError, TypeError):
-        logging.error(f"Failed to convert value: {x} to float.")
-        return 0.0
+        return x  # Keep the original string if it's not a number
+
 
 # Fetch Segment Data from Snowflake
 def fetch_segment_data():
@@ -95,44 +95,31 @@ def fetch_segment_data():
 
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
-    try:
-        if len(row) != 15:
-            raise ValueError(f"Incorrect number of values to unpack from row: {row}")
+    # Extract all fields
+    criteria_id, subsegment_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, subsegment_name, segment_name = row
+    
+    # Convert all numerical values safely
+    numerical_values = [safe_convert(vac_min), safe_convert(vac_max), safe_convert(fc_min), safe_convert(fc_max),
+                        safe_convert(ac_min), safe_convert(ac_max), safe_convert(vmc_min), safe_convert(vmc_max),
+                        safe_convert(ruc_max)]
+    
+    # Prepare metadata, excluding any None values
+    metadata = {
+        'subsegment_name': subsegment_name,
+        'segment_name': segment_name,
+        'criteria_id': criteria_id
+    }
+    
+    # Add numerical values to metadata if they are not None
+    keys = ['vac_min', 'vac_max', 'fc_min', 'fc_max', 'ac_min', 'ac_max', 'vmc_min', 'vmc_max', 'ruc_max']
+    metadata.update({k: v for k, v in zip(keys, numerical_values) if v is not None})
+    
+    # Create vector (example with dummy data)
+    vector = np.zeros(1536)  # Assuming a vector size of 1536 for the example
 
-        (segment_id, segment_name, subsegment_id, subsegment_name, criteria_id, 
-         vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, 
-         il_description) = row
+    return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
 
-        numerical_values = [vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max]
-        vector_values = [safe_convert(value) for value in numerical_values]
-
-        vector = np.zeros(embedding_dimension)
-        vector[:len(vector_values)] = vector_values
-
-        metadata = {
-            'criteria_id': criteria_id,
-            'segment_name': segment_name,
-            'subsegment_name': subsegment_name,
-            'vac_min': float(vac_min) if vac_min is not None else None,
-            'vac_max': float(vac_max) if vac_max is not None else None,
-            'fc_min': int(fc_min) if fc_min is not None else None,
-            'fc_max': int(fc_max) if fc_max is not None else None,
-            'ac_min': int(ac_min) if ac_min is not None else None,
-            'ac_max': int(ac_max) if ac_max is not None else None,
-            'vmc_min': float(vmc_min) if vmc_min is not None else None,
-            'vmc_max': float(vmc_max) if vmc_max is not None else None,
-            'ruc_max': int(ruc_max) if ruc_max is not None else None,
-            'il_description': il_description
-        }
-
-        return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
-    except Exception as e:
-        logging.error(f"Error processing row {row}: {e}")
-        return None
-
-    except Exception as e:
-        logging.error(f"Error processing segment row: {e}, Row: {row}")
-        return None
+# Ensure you handle the `None` values correctly before sending them to Pinecone
 
 
 # Vectorize the Segment Data using ThreadPoolExecutor for concurrency

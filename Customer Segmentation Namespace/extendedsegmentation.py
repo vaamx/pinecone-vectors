@@ -91,50 +91,32 @@ def fetch_segment_data():
 
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
-    """
-    Processes each row to generate embeddings and package with metadata.
-    """
-    # Ensure that we unpack all the necessary values
-    (segment_id, segment_name, subsegment_id, subsegment_name,
-     criteria_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max,
-     vmc_min, vmc_max, ruc_max, il_description) = row
-    
-    # Combine subsegment and segment names to create a descriptive text for embedding
-    text_description = f"{subsegment_name} {segment_name}"
-    
-    # Generate embeddings for the description
-    embedding = generate_embeddings(text_description)
-    
-    # Convert numerical values (excluding text fields) to a vector
-    numerical_values = [vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max]  # Only numerical columns
-    vector_values = [safe_convert(x) for x in numerical_values]  # Safely convert numerical values to float
-    
-    # Create the complete vector: first part with numerical data, second part with embedding
-    vector = np.zeros(embedding_dimension)
-    vector[:len(vector_values)] = vector_values
-    vector[len(vector_values):len(vector_values) + len(embedding)] = embedding
+    criteria_id, subsegment_id, *values, subsegment_name, segment_name = row
+    vector_values = [safe_convert(x) for x in values]
+    vector = np.zeros(embedding_dimension)  # Ensure this matches your defined dimension
 
-    # Create metadata for Pinecone
+    # Calculate the remaining space for the embedding after vector_values
+    remaining_space = embedding_dimension - len(vector_values)
+
+    # Example embedding -- ensure it matches the size of remaining_space
+    embedding = np.random.rand(remaining_space)  # Mockup, replace with actual embedding fetch
+
+    # Ensure the total size matches the embedding_dimension
+    if len(embedding) != remaining_space:
+        logging.error(f"Dimension mismatch: embedding size {len(embedding)} does not match remaining space {remaining_space}")
+        return None
+
+    # Assign values to vector
+    vector[:len(vector_values)] = vector_values
+    vector[len(vector_values):] = embedding
+
     metadata = {
         'subsegment_name': subsegment_name,
         'segment_name': segment_name,
-        'criteria_id': criteria_id,
-        'il_description': il_description,  # Include textual description of the loyalty index if necessary
-        'criteria': {
-            'vac_min': vac_min,
-            'vac_max': vac_max,
-            'fc_min': fc_min,
-            'fc_max': fc_max,
-            'ac_min': ac_min,
-            'ac_max': ac_max,
-            'vmc_min': vmc_min,
-            'vmc_max': vmc_max,
-            'ruc_max': ruc_max
-        }
+        'criteria': {str(idx): val for idx, val in enumerate(values, start=1)}
     }
-    
-    # Return the dictionary required for Pinecone
     return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
+
 
 # Vectorize the Segment Data using ThreadPoolExecutor for concurrency
 def vectorize_segment_data(segment_data):

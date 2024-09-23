@@ -96,27 +96,36 @@ def fetch_segment_data():
 
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
-    # Assuming row is structured with the string elements first followed by numerical elements
-    # Adjust indices according to your actual data structure
-    subsegment_name, segment_name, *numerical_values = row
+    try:
+        # Ensure the row contains all expected columns
+        if len(row) < 12:  # Adjust the number according to actual number of columns you expect
+            raise ValueError("Row data incomplete: " + str(row))
+        
+        # Unpack row data with explicit naming for clarity
+        criteria_id, subsegment_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, subsegment_name, segment_name = row
 
-    vector_values = [safe_convert(x) for x in numerical_values]
-    vector = np.zeros(embedding_dimension)  # Ensure this matches your defined dimension
-    
-    # Embedding or additional processing here
-    remaining_space = embedding_dimension - len(vector_values)
-    embedding = np.random.rand(remaining_space)  # This is just a placeholder
+        # Convert any decimal or None values safely to float
+        vector_values = [safe_convert(vac_min), safe_convert(vac_max), safe_convert(fc_min), safe_convert(fc_max),
+                         safe_convert(ac_min), safe_convert(ac_max), safe_convert(vmc_min), safe_convert(vmc_max), safe_convert(ruc_max)]
 
-    # Concatenate vector_values and embedding
-    vector[:len(vector_values)] = vector_values
-    vector[len(vector_values):] = embedding
+        # Initialize a vector with zeros
+        vector = np.zeros(embedding_dimension)
+        
+        # Populate the vector with actual data (ensure the size matches the available slots in the vector)
+        vector[:len(vector_values)] = vector_values
+        
+        # Metadata for easier querying and understanding of data context
+        metadata = {
+            'subsegment_name': subsegment_name,
+            'segment_name': segment_name,
+            'criteria_id': criteria_id  # Adding criteria_id to metadata for better traceability
+        }
 
-    metadata = {
-        'subsegment_name': subsegment_name,
-        'segment_name': segment_name,
-        'criteria': {str(idx): val for idx, val in enumerate(numerical_values, start=1)}
-    }
-    return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
+        return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
+
+    except Exception as e:
+        logging.error(f"Error processing segment row: {e}, Row: {row}")
+        return None
 
 
 # Vectorize the Segment Data using ThreadPoolExecutor for concurrency

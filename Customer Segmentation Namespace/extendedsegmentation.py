@@ -96,36 +96,45 @@ def fetch_segment_data():
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
     try:
-        # Ensure the row contains all expected columns (e.g., 15 columns)
-        if len(row) != 15:
-            raise ValueError(f"Incorrect number of values to unpack from row: {row}")
-        
-        # Unpack all 15 values
+        # Unpack the row values
         (segment_id, segment_name, subsegment_id, subsegment_name, criteria_id, 
          vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, 
          il_description) = row
 
-        # Convert numerical values to floats safely
+        # Safely convert numerical values
         numerical_values = [safe_convert(vac_min), safe_convert(vac_max), safe_convert(fc_min), safe_convert(fc_max),
                             safe_convert(ac_min), safe_convert(ac_max), safe_convert(vmc_min), safe_convert(vmc_max),
                             safe_convert(ruc_max)]
 
-        # Prepare metadata, excluding any None values
+        # Generate text embedding for example purposes (replace with your embedding model)
+        text_to_embed = f"{segment_name} {subsegment_name}"
+        embedding = generate_embeddings(text_to_embed)  # Use your embedding model here
+
+        # Ensure the vector has real data
+        vector = np.zeros(1536)  # Assuming a 1536-dimensional vector
+        vector[:len(numerical_values)] = numerical_values
+        vector[len(numerical_values):len(numerical_values) + len(embedding)] = embedding
+
+        # Construct metadata
         metadata = {
-            'subsegment_name': subsegment_name,
             'segment_name': segment_name,
-            'criteria_id': criteria_id
+            'subsegment_name': subsegment_name,
+            'criteria_id': criteria_id,
+            'vac_min': float(vac_min) if vac_min is not None else None,
+            'vac_max': float(vac_max) if vac_max is not None else None,
+            'fc_min': int(fc_min) if fc_min is not None else None,
+            'fc_max': int(fc_max) if fc_max is not None else None,
+            'ac_min': int(ac_min) if ac_min is not None else None,
+            'ac_max': int(ac_max) if ac_max is not None else None,
+            'vmc_min': float(vmc_min) if vmc_min is not None else None,
+            'vmc_max': float(vmc_max) if vmc_max is not None else None,
+            'ruc_max': int(ruc_max) if ruc_max is not None else None,
+            'il_description': il_description
+            # Add other metadata fields as necessary
         }
-        
-        # Add numerical values to metadata if they are not None
-        keys = ['vac_min', 'vac_max', 'fc_min', 'fc_max', 'ac_min', 'ac_max', 'vmc_min', 'vmc_max', 'ruc_max']
-        metadata.update({k: v for k, v in zip(keys, numerical_values) if v is not None})
-        
-        # Create vector (example with dummy data)
-        vector = np.zeros(1536)  # Assuming a vector size of 1536 for the example
 
         return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
-    
+
     except Exception as e:
         logging.error(f"Error processing row {row}: {e}")
         return None

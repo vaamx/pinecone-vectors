@@ -24,7 +24,7 @@ snowflake_user = os.getenv("SNOWFLAKE_USER")
 snowflake_password = os.getenv("SNOWFLAKE_PASSWORD")
 
 # Initialize Pinecone Client
-pc = pinecone.Client(api_key=pinecone_api_key)
+pc = pinecone.Pinecone(api_key=pinecone_api_key)
 index_name = "customer-classification"
 namespace = "customer-classification"  # Ensure namespace is clearly defined
 embedding_dimension = 1536

@@ -57,10 +57,12 @@ def generate_embeddings(text):
 
 # Function to safely convert decimals to floats
 def safe_convert(x):
+    if x is None:
+        return 0.0
     try:
         return float(x)
     except ValueError:
-        return 0.0  # or use None, or continue with a different handling logic
+        return 0.0  # or log this issue, or handle it in another appropriate way
 
 # Fetch Segment Data from Snowflake
 def fetch_segment_data():

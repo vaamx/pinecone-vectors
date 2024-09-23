@@ -2,7 +2,7 @@ import os
 import logging
 import numpy as np
 from decimal import Decimal
-import pinecone
+from pinecone import Pinecone, ServerlessSpec
 import snowflake.connector
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
@@ -30,11 +30,18 @@ index_name = "diana-sales"
 embedding_dimension = 1536
 namespace = "segmentcriteria"
 
-# Initialize Pinecone
-pinecone.init(api_key=pinecone_api_key)
-if index_name not in pinecone.list_indexes():
-    pinecone.create_index(name=index_name, dimension=embedding_dimension, metric='cosine')
-index = pinecone.Index(index_name)
+# Initialize Pinecone using the new API method
+pc = Pinecone(api_key=pinecone_api_key)
+
+# Check if the index exists; if not, create it
+if index_name not in pc.list_indexes().names():
+    pc.create_index(
+        name=index_name,
+        dimension=embedding_dimension,
+        metric='cosine',
+        spec=ServerlessSpec(cloud='aws', region='us-east-1')  # Adjust region as necessary
+    )
+index = pc.Index(index_name)
 
 # Function to generate embeddings using OpenAI API
 def generate_embeddings(text):

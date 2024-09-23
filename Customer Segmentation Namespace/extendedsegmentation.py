@@ -94,6 +94,7 @@ def process_segment_row(row):
     """
     Processes each row to generate embeddings and package with metadata.
     """
+    # Extracting values from the row
     criteria_id, subsegment_id, *values, subsegment_name, segment_name = row
     
     # Combine subsegment and segment names to create a descriptive text for embedding
@@ -102,8 +103,11 @@ def process_segment_row(row):
     # Generate embeddings for the description
     embedding = generate_embeddings(text_description)
     
-    # Convert numerical values to a vector
-    vector_values = [safe_convert(x) for x in values]
+    # Convert numerical values (excluding text fields) to a vector
+    numerical_values = [vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max]  # Only numerical columns
+    vector_values = [safe_convert(x) for x in numerical_values]  # Safely convert numerical values to float
+    
+    # Create the complete vector: first part with numerical data, second part with embedding
     vector = np.zeros(embedding_dimension)
     vector[:len(vector_values)] = vector_values
     vector[len(vector_values):len(vector_values) + len(embedding)] = embedding
@@ -112,7 +116,19 @@ def process_segment_row(row):
     metadata = {
         'subsegment_name': subsegment_name,
         'segment_name': segment_name,
-        'criteria': {str(idx): val for idx, val in enumerate(values)}
+        'criteria_id': criteria_id,
+        'il_description': il_description,  # Include textual description of the loyalty index if necessary
+        'criteria': {
+            'vac_min': vac_min,
+            'vac_max': vac_max,
+            'fc_min': fc_min,
+            'fc_max': fc_max,
+            'ac_min': ac_min,
+            'ac_max': ac_max,
+            'vmc_min': vmc_min,
+            'vmc_max': vmc_max,
+            'ruc_max': ruc_max
+        }
     }
     
     return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}

@@ -57,7 +57,10 @@ def generate_embeddings(text):
 
 # Function to safely convert decimals to floats
 def safe_convert(x):
-    return float(x) if isinstance(x, Decimal) else 0.0 if x is None else float(x)
+    try:
+        return float(x)
+    except ValueError:
+        return 0.0  # or use None, or continue with a different handling logic
 
 # Fetch Segment Data from Snowflake
 def fetch_segment_data():
@@ -91,29 +94,25 @@ def fetch_segment_data():
 
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
-    criteria_id, subsegment_id, *values, subsegment_name, segment_name = row
-    vector_values = [safe_convert(x) for x in values]
+    # Assuming row is structured with the string elements first followed by numerical elements
+    # Adjust indices according to your actual data structure
+    subsegment_name, segment_name, *numerical_values = row
+
+    vector_values = [safe_convert(x) for x in numerical_values]
     vector = np.zeros(embedding_dimension)  # Ensure this matches your defined dimension
-
-    # Calculate the remaining space for the embedding after vector_values
+    
+    # Embedding or additional processing here
     remaining_space = embedding_dimension - len(vector_values)
+    embedding = np.random.rand(remaining_space)  # This is just a placeholder
 
-    # Example embedding -- ensure it matches the size of remaining_space
-    embedding = np.random.rand(remaining_space)  # Mockup, replace with actual embedding fetch
-
-    # Ensure the total size matches the embedding_dimension
-    if len(embedding) != remaining_space:
-        logging.error(f"Dimension mismatch: embedding size {len(embedding)} does not match remaining space {remaining_space}")
-        return None
-
-    # Assign values to vector
+    # Concatenate vector_values and embedding
     vector[:len(vector_values)] = vector_values
     vector[len(vector_values):] = embedding
 
     metadata = {
         'subsegment_name': subsegment_name,
         'segment_name': segment_name,
-        'criteria': {str(idx): val for idx, val in enumerate(values, start=1)}
+        'criteria': {str(idx): val for idx, val in enumerate(numerical_values, start=1)}
     }
     return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
 

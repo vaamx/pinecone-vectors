@@ -34,7 +34,7 @@ if index_name not in pc.list_indexes():
     pc.create_index(
         name=index_name,
         dimension=embedding_dimension,
-        metric='cosine'
+        metric='cosine',
         spec=pinecone.ServerlessSpec(cloud='aws', region='us-east-1')
     )
 

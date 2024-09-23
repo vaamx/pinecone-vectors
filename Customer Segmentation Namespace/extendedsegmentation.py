@@ -95,31 +95,40 @@ def fetch_segment_data():
 
 # Process each row of segment data, generating vectors
 def process_segment_row(row):
-    # Extract all fields
-    criteria_id, subsegment_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, subsegment_name, segment_name = row
-    
-    # Convert all numerical values safely
-    numerical_values = [safe_convert(vac_min), safe_convert(vac_max), safe_convert(fc_min), safe_convert(fc_max),
-                        safe_convert(ac_min), safe_convert(ac_max), safe_convert(vmc_min), safe_convert(vmc_max),
-                        safe_convert(ruc_max)]
-    
-    # Prepare metadata, excluding any None values
-    metadata = {
-        'subsegment_name': subsegment_name,
-        'segment_name': segment_name,
-        'criteria_id': criteria_id
-    }
-    
-    # Add numerical values to metadata if they are not None
-    keys = ['vac_min', 'vac_max', 'fc_min', 'fc_max', 'ac_min', 'ac_max', 'vmc_min', 'vmc_max', 'ruc_max']
-    metadata.update({k: v for k, v in zip(keys, numerical_values) if v is not None})
-    
-    # Create vector (example with dummy data)
-    vector = np.zeros(1536)  # Assuming a vector size of 1536 for the example
+    try:
+        # Ensure the row contains all expected columns (e.g., 15 columns)
+        if len(row) != 15:
+            raise ValueError(f"Incorrect number of values to unpack from row: {row}")
+        
+        # Unpack all 15 values
+        (segment_id, segment_name, subsegment_id, subsegment_name, criteria_id, 
+         vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max, 
+         il_description) = row
 
-    return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
+        # Convert numerical values to floats safely
+        numerical_values = [safe_convert(vac_min), safe_convert(vac_max), safe_convert(fc_min), safe_convert(fc_max),
+                            safe_convert(ac_min), safe_convert(ac_max), safe_convert(vmc_min), safe_convert(vmc_max),
+                            safe_convert(ruc_max)]
 
-# Ensure you handle the `None` values correctly before sending them to Pinecone
+        # Prepare metadata, excluding any None values
+        metadata = {
+            'subsegment_name': subsegment_name,
+            'segment_name': segment_name,
+            'criteria_id': criteria_id
+        }
+        
+        # Add numerical values to metadata if they are not None
+        keys = ['vac_min', 'vac_max', 'fc_min', 'fc_max', 'ac_min', 'ac_max', 'vmc_min', 'vmc_max', 'ruc_max']
+        metadata.update({k: v for k, v in zip(keys, numerical_values) if v is not None})
+        
+        # Create vector (example with dummy data)
+        vector = np.zeros(1536)  # Assuming a vector size of 1536 for the example
+
+        return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
+    
+    except Exception as e:
+        logging.error(f"Error processing row {row}: {e}")
+        return None
 
 
 # Vectorize the Segment Data using ThreadPoolExecutor for concurrency

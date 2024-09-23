@@ -24,57 +24,51 @@ snowflake_user = os.getenv("SNOWFLAKE_USER")
 snowflake_password = os.getenv("SNOWFLAKE_PASSWORD")
 
 # Initialize Pinecone Client
-pc = pinecone.Pinecone(api_key=pinecone_api_key)
+pc = pinecone.Client(api_key=pinecone_api_key)
 index_name = "customer-classification"
+namespace = "customer-classification"  # Ensure namespace is clearly defined
 embedding_dimension = 1536
 
 # Check if the index exists; if not, create it
-if index_name not in pc.list_indexes().names():
+if index_name not in pc.list_indexes():
     pc.create_index(
         name=index_name,
         dimension=embedding_dimension,
-        metric='cosine',
-        spec=pinecone.ServerlessSpec(
-            cloud='aws',
-            region='us-east-1'  # Adjusted to the free tier region
-        )
+        metric='cosine'
     )
 
-index = pc.Index(index_name)
+index = pc.Index(name=index_name)
+
+# Verify or create the namespace
+if namespace not in index.list_namespaces():
+    index.create_namespace(name=namespace)
 
 # Fetch Segment Data from Snowflake
 def fetch_segment_data():
     logging.info("Fetching segment data from Snowflake.")
-    try:
-        conn = snowflake.connector.connect(
-            user=snowflake_user,
-            password=snowflake_password,
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            warehouse='DIANA_DATA_LAKE',
-            database='DIANA_SALES_ES',
-            schema='SEGMENTS'
-        )
-        cur = conn.cursor()
-        query = """
-        SELECT sc.CRITERIA_ID, sc.SUBSEGMENT_ID, sc.VAC_MIN, sc.VAC_MAX, sc.FC_MIN, sc.FC_MAX, 
-               sc.AC_MIN, sc.AC_MAX, sc.VMC_MIN, sc.VMC_MAX, sc.RUC_MAX, 
-               sub.SUBSEGMENT_NAME, seg.SEGMENT_NAME
-        FROM SEGMENTCRITERIA sc
-        JOIN SUBSEGMENTS sub ON sc.SUBSEGMENT_ID = sub.SUBSEGMENT_ID
-        JOIN SEGMENTS seg ON sub.SEGMENT_ID = seg.SEGMENT_ID
-        """
-        cur.execute(query)
-        segment_data = cur.fetchall()
-        return segment_data
-    finally:
-        cur.close()
-        conn.close()
+    with snowflake.connector.connect(
+        user=snowflake_user,
+        password=snowflake_password,
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        warehouse='DIANA_DATA_LAKE',
+        database='DIANA_SALES_ES',
+        schema='SEGMENTS'
+    ) as conn:
+        with conn.cursor() as cur:
+            query = """
+            SELECT sc.CRITERIA_ID, sc.SUBSEGMENT_ID, sc.VAC_MIN, sc.VAC_MAX, sc.FC_MIN, sc.FC_MAX,
+                   sc.AC_MIN, sc.AC_MAX, sc.VMC_MIN, sc.VMC_MAX, sc.RUC_MAX,
+                   sub.SUBSEGMENT_NAME, seg.SEGMENT_NAME
+            FROM SEGMENTCRITERIA sc
+            JOIN SUBSEGMENTS sub ON sc.SUBSEGMENT_ID = sub.SUBSEGMENT_ID
+            JOIN SEGMENTS seg ON sub.SEGMENT_ID = seg.SEGMENT_ID
+            """
+            cur.execute(query)
+            return cur.fetchall()
 
 # Convert Decimal values to float safely
 def safe_convert(x):
-    if isinstance(x, Decimal):
-        return float(x)
-    return 0.0 if x is None else float(x)
+    return float(x) if isinstance(x, Decimal) else 0.0 if x is None else float(x)
 
 # Vectorize the Data
 def vectorize_segment_data(segment_data):
@@ -84,47 +78,26 @@ def vectorize_segment_data(segment_data):
     return results
 
 def process_segment_row(row):
-    (criteria_id, subsegment_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max,
-     vmc_min, vmc_max, ruc_max, subsegment_name, segment_name) = row
-
-    # Apply safe conversion to vector values
-    vector_values = [safe_convert(x) for x in [vac_min, vac_max, fc_min, fc_max, ac_min, ac_max, vmc_min, vmc_max, ruc_max]]
-    
-    # Ensure vector is properly defined here
+    criteria_id, subsegment_id, *values, subsegment_name, segment_name = row
+    vector_values = [safe_convert(x) for x in values]
     vector = np.zeros(embedding_dimension)
     vector[:len(vector_values)] = vector_values
-
-    # Flatten criteria into separate metadata fields
     metadata = {
-        'subsegment_name': str(subsegment_name),  # Ensure strings
-        'segment_name': str(segment_name),  # Ensure strings
-        'vac_min': float(safe_convert(vac_min)),
-        'vac_max': float(safe_convert(vac_max)),
-        'fc_min': float(safe_convert(fc_min)),
-        'fc_max': float(safe_convert(fc_max)),
-        'ac_min': float(safe_convert(ac_min)),
-        'ac_max': float(safe_convert(ac_max)),
-        'vmc_min': float(safe_convert(vmc_min)),
-        'vmc_max': float(safe_convert(vmc_max)),
-        'ruc_max': float(safe_convert(ruc_max))
+        'subsegment_name': subsegment_name,
+        'segment_name': segment_name,
+        'criteria': {str(idx): val for idx, val in enumerate(values)}
     }
-    
     return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
 
 # Upsert Vectors to Pinecone
 def batch_upload_to_pinecone(vectors):
-    logging.info(f"Uploading {len(vectors)} vectors to Pinecone.")
-    for i in range(0, len(vectors), 100):
-        batch = vectors[i:i+100]
-        index.upsert(vectors=batch)
+    logging.info(f"Uploading {len(vectors)} vectors to Pinecone in namespace '{namespace}'.")
+    response = index.upsert(vectors=vectors, namespace=namespace)
+    logging.info(f"Upsert response: {response}")
 
 # Main execution function
 def main():
     segment_data = fetch_segment_data()
     if segment_data:
         vectorized_data = vectorize_segment_data(segment_data)
-        batch_upload_to_pinecone(vectorized_data)
-    logging.info("Data processing complete.")
-
-if __name__ == "__main__":
-    main()
+       

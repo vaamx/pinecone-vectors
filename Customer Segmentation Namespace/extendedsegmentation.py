@@ -110,10 +110,21 @@ def process_segment_row(row):
         vector[:len(vector_values)] = vector_values
 
         metadata = {
-            'segment_id': segment_id, 'segment_name': segment_name,
-            'subsegment_id': subsegment_id, 'subsegment_name': subsegment_name,
+            'criteria_id': criteria_id,
+            'segment_name': segment_name,
+            'subsegment_name': subsegment_name,
+            'vac_min': float(vac_min) if vac_min is not None else None,
+            'vac_max': float(vac_max) if vac_max is not None else None,
+            'fc_min': int(fc_min) if fc_min is not None else None,
+            'fc_max': int(fc_max) if fc_max is not None else None,
+            'ac_min': int(ac_min) if ac_min is not None else None,
+            'ac_max': int(ac_max) if ac_max is not None else None,
+            'vmc_min': float(vmc_min) if vmc_min is not None else None,
+            'vmc_max': float(vmc_max) if vmc_max is not None else None,
+            'ruc_max': int(ruc_max) if ruc_max is not None else None,
             'il_description': il_description
         }
+
         return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
     except Exception as e:
         logging.error(f"Error processing row {row}: {e}")

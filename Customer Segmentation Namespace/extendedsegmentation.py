@@ -25,8 +25,8 @@ snowflake_password = os.getenv("SNOWFLAKE_PASSWORD")
 
 # Initialize Pinecone Client
 pc = pinecone.Pinecone(api_key=pinecone_api_key)
-index_name = "customer-classification"
-namespace = "customer-classification"  # Ensure namespace is clearly defined
+index_name = "segmentcriteria"
+namespace = "segmentcriteria"  # Ensure namespace is clearly defined
 embedding_dimension = 1536
 
 # Check if the index exists; if not, create it

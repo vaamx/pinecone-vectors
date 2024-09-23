@@ -94,8 +94,10 @@ def process_segment_row(row):
     """
     Processes each row to generate embeddings and package with metadata.
     """
-    # Extracting values from the row
-    criteria_id, subsegment_id, *values, subsegment_name, segment_name = row
+    # Ensure that we unpack all the necessary values
+    (segment_id, segment_name, subsegment_id, subsegment_name,
+     criteria_id, vac_min, vac_max, fc_min, fc_max, ac_min, ac_max,
+     vmc_min, vmc_max, ruc_max, il_description) = row
     
     # Combine subsegment and segment names to create a descriptive text for embedding
     text_description = f"{subsegment_name} {segment_name}"
@@ -131,6 +133,7 @@ def process_segment_row(row):
         }
     }
     
+    # Return the dictionary required for Pinecone
     return {'id': str(criteria_id), 'values': vector.tolist(), 'metadata': metadata}
 
 # Vectorize the Segment Data using ThreadPoolExecutor for concurrency
